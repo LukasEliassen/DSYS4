@@ -14,8 +14,21 @@ service Template
 {
     // one message is sent and one is recieved
     rpc SendMessage (Message) returns (Message);
+    rpc SendRequest (Request) returns (Reply);
 }
 
 message Message {
     string message = 1;
+}
+
+message Request{
+    int32 lamport = 1;
+    int32 nodeID = 2;
+    string port = 3;
+    int32 lamport_req = 4;
+}
+
+message Reply{
+    string message = 1;
+    int32 lamport = 2;
 }
