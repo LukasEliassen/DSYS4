@@ -13,12 +13,7 @@ package proto;
 service Template
 {
     // one message is sent and one is recieved
-    rpc SendMessage (Message) returns (Message);
     rpc SendRequest (Request) returns (Reply);
-}
-
-message Message {
-    string message = 1;
 }
 
 message Request{

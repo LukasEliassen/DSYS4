@@ -126,8 +126,6 @@ func (n *node) parseInput() {
 			n.ConnectToNode(portString)
 		} else if strings.Contains(input, "request") {
 			go n.sendRequest()
-		} else {
-			n.sendMessage(input)
 		}
 		continue
 	}
@@ -162,15 +160,6 @@ func main() {
 	}
 }
 
-func (n *node) SendMessage(ctx context.Context, Message *gRPC.Message) (*gRPC.Message, error) {
-	// locks the server ensuring no one else can increment the value at the same time.
-	// and unlocks the server when the method is done.
-	//n.mutex.Lock()
-	//defer n.mutex.Unlock()
-	fmt.Println("s.Message: ", Message)
-	return &gRPC.Message{Message: "fucking"}, nil
-}
-
 func (n *node) SendRequest(ctx context.Context, Message *gRPC.Request) (*gRPC.Reply, error) {
 	log.Printf("%v is requesting token at lamport timestamp %v, %v", Message.NodeID, Message.NodeID, Message.LamportReq)
 	if n.state == Wanted {
@@ -179,14 +168,17 @@ func (n *node) SendRequest(ctx context.Context, Message *gRPC.Request) (*gRPC.Re
 	if n.state == Held {
 		log.Printf("%v already has the token", n.nodeID)
 	}
+	//updating lamport timestamp
 	n.setlamportMax(Message.Lamport)
 	if (n.state == Held) || (n.state == Wanted && n.myLamportIsLower(Message.LamportReq, Message.NodeID)) {
 		n.mutex.Lock()
+		//putting the request on the queue
 		n.requests = append(n.requests, Message.Port)
 		n.mutex.Unlock()
 		log.Println("Queueing request from ", Message.NodeID)
 		for {
 			select {
+			//while-loop to check if reply is ready to be send back
 			case msg := <-n.channels[Message.Port]:
 				log.Println("Replying to request from ", Message.NodeID)
 				n.incrementLamport()
@@ -199,7 +191,10 @@ func (n *node) SendRequest(ctx context.Context, Message *gRPC.Request) (*gRPC.Re
 	return &gRPC.Reply{Message: "tjelløk", Lamport: n.lamport}, nil
 }
 
+// logic for updating lamport timestamp
 func (n *node) myLamportIsLower(lamport int32, nodeID int32) bool {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
 	if n.lamportRequest < lamport {
 		return true
 	}
@@ -233,15 +228,20 @@ func (n *node) changeState(newState string) {
 }
 
 func (n *node) sendRequest() {
+
+	//if-statement to make sure that only one request is proccesed at a time
 	if n.state != Released {
 		log.Println("Waiting for previous request to finish...")
 		return
 	}
 	n.changeState(Wanted)
+	//saving the lamport timestamp of when the request was made so that it can be attached to the request
 	n.lamportRequest = n.lamport
 	go func() {
 		counter := 0
+		//
 		for _, element := range n.nodeSlice {
+			//incrementing lamport timestamp for each message send
 			n.incrementLamport()
 			request := &gRPC.Request{
 				Lamport:    n.lamport,
@@ -252,27 +252,33 @@ func (n *node) sendRequest() {
 			log.Printf("Sending request")
 			reply, err := element.node.SendRequest(context.Background(), request)
 			log.Printf("Reply received")
+			//updating lamport timestamp
 			n.setlamportMax(reply.Lamport)
 			if err != nil {
 				log.Printf("Client %v: no response from the server, attempting to reconnect", n.nodeID)
 				log.Println(err)
 			} else {
+				//incrementing counter, representing the number of successful replies
 				counter++
 			}
 		}
 		n.repliesReceived <- counter
 	}()
+	//receiving the counter from the go-routine
 	counter := <-n.repliesReceived
 	log.Printf("Replies recieved: %v", counter)
+	//method only proceeds if number of replies is N - 1
 	if counter == len(n.nodeSlice) {
 		n.changeState(Held)
 		log.Println("I'm in the critical section!")
+		//method sleeps for 10 seconds to simulate work being done
 		time.Sleep(10 * time.Second)
 		log.Println("Exiting critical section!")
 		n.changeState(Released)
 		log.Println("Size of queue: ", len(n.requests))
 		iterations := len(n.requests)
 
+		//replying to requests that might be in the queue
 		for i := 0; i < iterations; i++ {
 			n.mutex.Lock()
 			request := n.requests[0]
@@ -284,20 +290,8 @@ func (n *node) sendRequest() {
 			}
 			channel <- *reply
 		}
-	}
-}
-
-func (n *node) sendMessage(input string) {
-	Message := &gRPC.Message{
-		Message: input,
-	}
-	for _, element := range n.nodeSlice {
-		Message, err := element.node.SendMessage(context.Background(), Message)
-		if err != nil {
-			log.Printf("Client %v: no response from the server, attempting to reconnect", n.nodeID)
-			log.Println(err)
-		}
-
-		fmt.Println(Message.Message)
+	} else {
+		n.changeState(Released)
+		log.Println("Aborting request, something went wrong!")
 	}
 }

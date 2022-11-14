@@ -23,7 +23,6 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TemplateClient interface {
 	// one message is sent and one is recieved
-	SendMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Message, error)
 	SendRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Reply, error)
 }
 
@@ -33,15 +32,6 @@ type templateClient struct {
 
 func NewTemplateClient(cc grpc.ClientConnInterface) TemplateClient {
 	return &templateClient{cc}
-}
-
-func (c *templateClient) SendMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Message, error) {
-	out := new(Message)
-	err := c.cc.Invoke(ctx, "/proto.Template/SendMessage", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *templateClient) SendRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Reply, error) {
@@ -58,7 +48,6 @@ func (c *templateClient) SendRequest(ctx context.Context, in *Request, opts ...g
 // for forward compatibility
 type TemplateServer interface {
 	// one message is sent and one is recieved
-	SendMessage(context.Context, *Message) (*Message, error)
 	SendRequest(context.Context, *Request) (*Reply, error)
 	mustEmbedUnimplementedTemplateServer()
 }
@@ -67,9 +56,6 @@ type TemplateServer interface {
 type UnimplementedTemplateServer struct {
 }
 
-func (UnimplementedTemplateServer) SendMessage(context.Context, *Message) (*Message, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
-}
 func (UnimplementedTemplateServer) SendRequest(context.Context, *Request) (*Reply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendRequest not implemented")
 }
@@ -84,24 +70,6 @@ type UnsafeTemplateServer interface {
 
 func RegisterTemplateServer(s grpc.ServiceRegistrar, srv TemplateServer) {
 	s.RegisterService(&Template_ServiceDesc, srv)
-}
-
-func _Template_SendMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Message)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TemplateServer).SendMessage(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.Template/SendMessage",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TemplateServer).SendMessage(ctx, req.(*Message))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Template_SendRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -129,10 +97,6 @@ var Template_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.Template",
 	HandlerType: (*TemplateServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "SendMessage",
-			Handler:    _Template_SendMessage_Handler,
-		},
 		{
 			MethodName: "SendRequest",
 			Handler:    _Template_SendRequest_Handler,
